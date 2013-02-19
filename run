@@ -178,7 +178,7 @@ class VirtTestRunParser(optparse.OptionParser):
                            dest="restore_image_between_tests",
                            help="Restore from the pristine image on *every test*")
         general.add_option("-g", "--guest-os", action="store", dest="guest_os",
-                           default="JeOS.17.64",
+                           default="JeOS",
                            help=("Select the guest OS to be used. "
                                  "If -c is provided, this will be ignored. "
                                  "Default: %default"))
@@ -431,7 +431,8 @@ class VirtTestApp(object):
 
         # TODO: this is x86-specific, instead we can get the default arch from
         # qemu binary and run on all supported machine types
-        if self.options.arch == 'any' and self.options.machine_type == 'any':
+        if self.options.arch == 'any' and self.options.machine_type == 'any'
+                and self.options.guest_os == 'JeOS':
             self.options.machine_type = 'i440fx'
 
         self._process_qemu_bin()
