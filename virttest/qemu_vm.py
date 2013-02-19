@@ -618,10 +618,8 @@ class VM(virt_vm.BaseVM):
                 netdev_vlan_str = ",netdev=%s" % netdev_id
             else:
                 netdev_vlan_str = ",vlan=%d" % vlan
-            if has_option(help_text, "device"):
-                if not model:
-                    model = "rtl8139"
-                elif model == "virtio":
+            if model and has_option(help_text, "device"):
+                if model == "virtio":
                     model = "virtio-net-pci"
                 cmd = " -device %s" % model + netdev_vlan_str
                 if mac:
