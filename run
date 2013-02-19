@@ -173,7 +173,7 @@ class VirtTestRunParser(optparse.OptionParser):
                            dest="restore_image_between_tests",
                            help="Restore from the pristine image on *every test*")
         general.add_option("-g", "--guest-os", action="store", dest="guest_os",
-                           default="JeOS.17.64",
+                           default="JeOS",
                            help=("Select the guest OS to be used. "
                                  "If -c is provided, thiis will be ignored. "
                                  "Default: %default"))
