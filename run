@@ -217,6 +217,11 @@ class VirtTestRunParser(optparse.OptionParser):
         qemu.add_option("--accel", action="store", dest="accel", default="kvm",
                         help=("Accelerator used to run qemu (kvm or tcg). "
                               "Default: kvm"))
+        qemu.add_option("--arch", action="store", dest="arch",
+                        default="x86_64",
+                        help=("Architecture under test. "
+                              "If -c is provided, this will be ignored. "
+                              "Default: %default"))
         qemu.add_option("--nettype", action="store", dest="nettype",
                         default="user",
                         help=("QEMU network option (bridge or user). "
@@ -357,6 +362,13 @@ class VirtTestApp(object):
             logging.info("Config provided, ignoring --smp option")
 
 
+    def _process_arch(self):
+        if not self.options.config:
+            self.cartesian_parser.only_filter('arch_' + self.options.arch)
+        else:
+            logging.info("Config provided, ignoring --arch option")
+
+
     def _process_image_type(self):
         if not self.options.config:
             if self.options.image_type in SUPPORTED_IMAGE_TYPES:
@@ -405,6 +417,7 @@ class VirtTestApp(object):
         self._process_bridge_mode()
         self._process_monitor()
         self._process_smp()
+        self._process_arch()
         self._process_image_type()
         self._process_nic_model()
         self._process_disk_buses()
