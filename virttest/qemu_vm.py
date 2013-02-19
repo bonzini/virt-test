@@ -487,10 +487,10 @@ class VM(virt_vm.BaseVM):
                     index = None
                 if fmt is not None and fmt.startswith("scsi-"):
                     # handles scsi-{hd, cd, disk, block, generic} targets
-                    name = "virtio-scsi-cd%s" % index
+                    name = fmt + index
                     dev += (" -device %s,drive=%s" %
                             (fmt, name))
-                    dev += _add_option("bus", "virtio_scsi_pci%d.0" % bus)
+                    dev += _add_option("bus", "scsi_hba%d.0" % bus)
                     fmt = "none"
                     index = None
                 cmd = " -drive file='%s',media=cdrom" % filename
@@ -549,7 +549,7 @@ class VM(virt_vm.BaseVM):
                 index = None
             if fmt.startswith("scsi-"):
                 # handles scsi-{hd, cd, disk, block, generic} targets
-                name = "virtio-scsi%s" % index
+                name = fmt + index
                 dev += " -device %s" % fmt
                 dev += _add_option("logical_block_size", logical_block_size)
                 dev += _add_option("physical_block_size", physical_block_size)
@@ -560,7 +560,7 @@ class VM(virt_vm.BaseVM):
                 dev += _add_option("removable", removable)
                 if bus:
                     name += "-b%s" % bus
-                    dev += _add_option("bus", "virtio_scsi_pci%d.0" % bus)
+                    dev += _add_option("bus", "scsi_hba%d.0" % bus)
                 if scsiid:
                     name += "-i%s" % scsiid
                     dev += _add_option("scsi-id", scsiid)
@@ -1006,7 +1006,7 @@ class VM(virt_vm.BaseVM):
             root_dir = self.root_dir
 
         have_ahci = False
-        virtio_scsi_pcis = []
+        scsi_hbas = []
 
         # Clone this VM using the new params
         vm = self.clone(name, params, root_dir, copy_state=True)
@@ -1147,10 +1147,10 @@ class VM(virt_vm.BaseVM):
                 except ValueError:
                     raise virt_vm.VMError("cfg: drive_bus have to be an "
                                           "integer. (%s)" % image_name)
-                for i in range(len(virtio_scsi_pcis), bus + 1):
-                    hba = params.get("scsi_hba", "virtio-scsi-pci");
-                    qemu_cmd += " -device %s,id=virtio_scsi_pci%d" % (hba, i)
-                    virtio_scsi_pcis.append("virtio_scsi_pci%d" % i)
+                for i in range(len(scsi_hbas), bus + 1):
+                    hba = params.get("scsi_hba");
+                    qemu_cmd += " -device %s,id=scsi_hba%d" % (hba, i)
+                    scsi_hbas.append("scsi_hba%d" % i)
 
             shared_dir = os.path.join(self.root_dir, "shared")
             qemu_cmd += add_drive(help_text,
@@ -1325,9 +1325,10 @@ class VM(virt_vm.BaseVM):
                 except ValueError:
                     raise virt_vm.VMError("cfg: drive_bus have to be an "
                                           "integer. (%s)" % cdrom)
-                for i in range(len(virtio_scsi_pcis), bus + 1):
-                    qemu_cmd += " -device virtio-scsi-pci,id=virtio_scsi_pci%d" % i
-                    virtio_scsi_pcis.append("virtio_scsi_pci%d" % i)
+                for i in range(len(scsi_hbas), bus + 1):
+                    hba = params.get("scsi_hba");
+                    qemu_cmd += " -device %s,id=scsi_hba%d" % (hba, i)
+                    scsi_hbas.append("scsi_hba%d" % i)
             if iso:
                 qemu_cmd += add_cdrom(help_text,
                               utils_misc.get_path(data_dir.get_data_dir(), iso),
