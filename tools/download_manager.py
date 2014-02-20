@@ -16,24 +16,20 @@ Downloads blobs defined in assets. Assets are .ini files that contain the
     uncompress_cmd (optionl) = Command that needs to be executed with the
         compressed file as a parameter
 
-@copyright: Red Hat 2012
+:copyright: Red Hat 2012
 """
-import glob, os, sys, logging, time
+import glob
+import os
+import sys
+import logging
+import time
 import common
 from autotest.client.shared import logging_manager
-from virttest import bootstrap, data_dir, utils_misc
+from virttest import asset, utils_misc
 
-
-def get_all_assets():
-    asset_data_list = []
-    download_dir = data_dir.get_download_dir()
-    for asset in glob.glob(os.path.join(download_dir, '*.ini')):
-        asset_name = os.path.basename(asset).split('.')[0]
-        asset_data_list.append(bootstrap.get_asset_info(asset_name))
-    return asset_data_list
 
 def download_assets():
-    all_assets = get_all_assets()
+    all_assets = asset.get_all_assets()
     if all_assets:
         logging.info("Available download assets:")
         logging.info("")
@@ -47,7 +43,7 @@ def download_assets():
                 logging.info("    %s = %s" % (k, asset_info[k]))
             logging.info("")
     indexes = raw_input("%s INFO | Type the index for the assets you want to "
-                        "download (comma separated): " %
+                        "download (comma separated, Ctrl+C to abort): " %
                         time.strftime("%H:%M:%S", time.localtime()))
 
     index_list = []
@@ -63,8 +59,13 @@ def download_assets():
 
     for idx in index_list:
         asset_info = all_assets[idx]
-        bootstrap.download_file(asset_info['shortname'], interactive=True)
+        asset.download_file(asset_info, interactive=True)
 
 if __name__ == "__main__":
     logging_manager.configure_logging(utils_misc.VirtLoggingConfig())
-    download_assets()
+    try:
+        download_assets()
+    except KeyboardInterrupt:
+        print
+        logging.info("Aborting...")
+        sys.exit(0)

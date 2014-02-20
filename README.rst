@@ -40,7 +40,9 @@ Debian based (needs to enable repo, see [3]):
 # apt-get install autotest
 
 Some tests might need some other dependencies, such as the migrate
-using file descriptors, that requires a working toolchain and python-devel.
+using file descriptors, that requires a working toolchain and python-devel,
+and generating VM videos, that requires python-gstreamer.
+
 For such cases, it is best that you refer to the more complete documentation:
 
 https://github.com/autotest/virt-test/wiki/InstallPrerequesitePackages
@@ -53,7 +55,7 @@ Execute the bootstrap script
 
 Let's say you're interested in the qemu tests:
 
-qemu/get_started.py
+./run -t qemu --bootstrap
 
 The script can help you to setup a data dir, copy the sample config files
 to actual config files, and download the JeOS image.
@@ -72,6 +74,21 @@ This will execute a subset of the tests available.
 Note: If you execute the runner before the bootstrap, things will work,
 but then you won't get prompted and the runner will download the JeOS
 automatically.
+
+Writing your first test
+-----------------------
+
+https://github.com/autotest/virt-test/wiki/WritingSimpleTests
+
+Is your tutorial to write your first test. Alternatively, you
+can copy the simple template test we have under the samples
+directory to the appropriate test directory, and start hacking
+from there. Example: You want to create a qemu specific test
+for the jelly functionality. You have to do:
+
+cp samples/template.py qemu/tests/jelly.py
+
+And then edit the template file accordingly.
 
 [1] If you want to use it without the packaged rpm, you need to have a clone
 of the autotest code (git://github.com/autotest/autotest.git) and set the
@@ -119,3 +136,29 @@ platform. Autotest is a modular framework, and this suite can be used as
 a submodule of the client module. If you do not want to use or know about
 autotest, this is fine too, and we'll provide documentation and tools to
 perform development style testing with it.
+
+
+Basic Troubleshooting
+---------------------
+
+If you have problems with the basic usage described here, it's possible
+that there's some local change in your working copy of virt-test. These
+changes can come in (at least) two different categories:
+
+- Code changes, which you can check with the git tools (try "git diff"
+  and "git branch" first)
+- Configuration changes that can you reset with "update_config.py"
+
+If you find that you have local changes in the code, please try to reset
+your checked out copy to upstream's master by running::
+
+$ git checkout master
+$ git pull
+
+
+And then, reset you configuration. If you're going to run qemu tests, run::
+
+$ ./run -t qemu --update-config
+
+If you're still having problems after these basic troubleshoot steps,
+please contact us!

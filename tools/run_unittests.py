@@ -1,14 +1,19 @@
 #!/usr/bin/python -u
 
-import os, sys, unittest, optparse, fcntl
+import os
+import sys
+import unittest
+import optparse
+import fcntl
 import common
 from autotest.client.shared.test_utils import unittest as custom_unittest
 import parallel
 
 
 class StreamProxy(object):
+
     """
-    Mechanism to supress stdout output, while keeping the original stdout.
+    Mechanism to suppress stdout output, while keeping the original stdout.
     """
 
     def __init__(self, filename='/dev/null', stream=sys.stdout):
@@ -55,7 +60,9 @@ def print_stdout(sr, end=True):
     except AttributeError:
         pass
 
+
 class Bcolors(object):
+
     """
     Very simple class with color support.
     """
@@ -127,7 +134,7 @@ parser.add_option("--full", action="store_true", dest="full", default=False,
                   help="whether to run the shortened version of the test")
 parser.add_option("--debug", action="store_true", dest="debug", default=False,
                   help="run in debug mode")
-parser.add_option("--skip-tests", dest="skip_tests",  default=[],
+parser.add_option("--skip-tests", dest="skip_tests", default=[],
                   help="A space separated list of tests to skip")
 
 parser.set_defaults(module_list=None)
@@ -141,9 +148,9 @@ class TestFailure(Exception):
 
 def run_test(mod_names, options):
     """
-    @param mod_names: A list of individual parts of the module name to import
+    :param mod_names: A list of individual parts of the module name to import
             and run as a test suite.
-    @param options: optparse options.
+    :param options: optparse options.
     """
     if not options.debug:
         sys.stdout = StreamProxy(stream=sys.stdout)
@@ -151,13 +158,12 @@ def run_test(mod_names, options):
     else:
         sys.stdout = StreamProxy(stream=sys.stdout)
 
-    test_name =  '.'.join(mod_names)
+    test_name = '.'.join(mod_names)
     fail = False
 
-    from_module = __import__(mod_names[0], globals(), locals(), [mod_names[-1]])
-    mod = getattr(from_module, mod_names[-1])
-
     try:
+        from_module = __import__(mod_names[0], globals(), locals(), [mod_names[-1]])
+        mod = getattr(from_module, mod_names[-1])
 
         for ut_module in [unittest, custom_unittest]:
             test = ut_module.defaultTestLoader.loadTestsFromModule(mod)
@@ -188,7 +194,7 @@ def scan_for_modules(start, options):
 
     skip_tests = []
     if options.skip_tests:
-        skip_tests.update(options.skip_tests.split())
+        skip_tests = options.skip_tests.split()
 
     for dirpath, subdirs, filenames in os.walk(start):
         # Only look in and below subdirectories that are python modules.
@@ -210,19 +216,20 @@ def scan_for_modules(start, options):
                     continue
                 path_no_py = os.path.join(dirpath, fname).rstrip('.py')
                 assert path_no_py.startswith(ROOT)
-                names = path_no_py[len(ROOT)+1:].split('/')
+                names = path_no_py[len(ROOT) + 1:].split('/')
                 modules.append(names)
                 if options.debug:
                     print 'testing', path_no_py
     return modules
+
 
 def find_and_run_tests(start, options):
     """
     Find and run Python unittest suites below the given directory.  Only look
     in subdirectories of start that are actual importable Python modules.
 
-    @param start: The absolute directory to look for tests under.
-    @param options: optparse options.
+    :param start: The absolute directory to look for tests under.
+    :param options: optparse options.
     """
     if options.module_list:
         modules = []
@@ -231,7 +238,11 @@ def find_and_run_tests(start, options):
     else:
         modules = scan_for_modules(start, options)
 
-    print_header('Number of test modules found: %d' % len(modules))
+    modules_count = len(modules)
+    if not modules_count:
+        print_header('No test module was found!')
+        return (modules_count, [])
+    print_header('Number of test modules found: %d' % modules_count)
 
     functions = {}
 
@@ -239,7 +250,7 @@ def find_and_run_tests(start, options):
         # Create a function that'll test a particular module.  module=module
         # is a hack to force python to evaluate the params now.  We then
         # rename the function to make error reporting nicer.
-        run_module = lambda module=module_names: run_test(module, options)
+        run_module = lambda module = module_names: run_test(module, options)
         name = '.'.join(module_names)
         run_module.__name__ = name
         functions[run_module] = set()
@@ -251,8 +262,8 @@ def find_and_run_tests(start, options):
         pe = parallel.ParallelExecute(functions, **dargs)
         pe.run_until_completion()
     except parallel.ParallelError, err:
-        return err.errors
-    return []
+        return (modules_count, err.errors)
+    return (modules_count, [])
 
 
 def main():
@@ -265,14 +276,19 @@ def main():
     del sys.argv[1:]
 
     absolute_start = os.path.join(ROOT, options.start)
-    errors = find_and_run_tests(absolute_start, options)
+    mod_cnt, errors = find_and_run_tests(absolute_start, options)
     if errors:
+        print "%d tests passed" % (mod_cnt - len(errors))
         print "%d tests resulted in an error/failure:" % len(errors)
         for error in errors:
             print "\t%s" % error
         print "Rerun", sys.argv[0], "--debug to see the failure details."
         sys.exit(1)
+    elif not mod_cnt:
+        print "No modules were tested"
+        sys.exit(0)
     else:
+        print "%d tests passed" % (mod_cnt - len(errors))
         print "All passed!"
         sys.exit(0)
 

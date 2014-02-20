@@ -1,6 +1,8 @@
 #!/usr/bin/python -u
 
-import os, sys, fnmatch
+import os
+import sys
+import fnmatch
 
 # do a basic check to see if pylint is even installed
 try:
@@ -10,9 +12,10 @@ except ImportError:
     sys.exit(1)
 
 # Classes of errors we ignore on quiet runs
-IGNORED_ERRORS = 'E1002,E1101,E1103,E1120,F0401'
+IGNORED_ERRORS = 'E1002,E1101,E1103,E1120,F0401,I0011'
 # By default, complain about all things
 LINT_VERBOSE = True
+
 
 def set_verbosity(verbose):
     '''
@@ -21,16 +24,14 @@ def set_verbosity(verbose):
     global LINT_VERBOSE
     LINT_VERBOSE = verbose
 
-pylintrc_path = os.path.expanduser('~/.pylintrc')
-if not os.path.exists(pylintrc_path):
-    open(pylintrc_path, 'w').close()
-
 major, minor, _ = pylint_version.split('.')
 pylint_version = float("%s.%s" % (major, minor))
 
 # patch up the logilab module lookup tools to understand autotest.* trash
 import logilab.common.modutils
 _ffm = logilab.common.modutils.file_from_modpath
+
+
 def file_from_modpath(modpath, path=None, context_file=None):
     if modpath[0] == "autotest":
         if modpath[1:]:
@@ -51,7 +52,9 @@ sys.path.insert(0, autotest_root)
 # patch up pylint import checker to handle our importing magic
 RealImportsChecker = imports.ImportsChecker
 
+
 class CustomImportsChecker(imports.ImportsChecker):
+
     def visit_from(self, node):
         if node.modname.startswith(ROOT_MODULE):
             node.modname = node.modname[len(ROOT_MODULE):]
@@ -83,7 +86,16 @@ def get_pylint_opts():
         else:
             opts = disable_old
 
-    return opts + ['--reports=no', '--include-ids=y', '--rcfile=/dev/null', '--good-names=i,j,k,Run,_,vm']
+    opts += ['--reports=no', '--rcfile=/dev/null',
+             '--good-names=i,j,k,Run,_,vm']
+
+    if pylint_version < 1.0:
+        fmt_opt = '--include-ids=y'
+    else:
+        fmt_opt = '--msg-template="{msg_id}:{line:3d},{column}: {obj}: {msg}"'
+    opts.append(fmt_opt)
+
+    return opts
 
 
 def check_file(file_path):
@@ -95,9 +107,15 @@ def check_file(file_path):
             return 0
     pylint_opts = get_pylint_opts()
     if pylint_version >= 0.21:
-        runner = pylint.lint.Run(pylint_opts + [file_path], exit=False)
+        try:
+            runner = pylint.lint.Run(pylint_opts + [file_path], exit=False)
+        except Exception, err:
+            return "Unexpected exception checking %s: %s" % (file_path, err)
     else:
-        runner = pylint.lint.Run(pylint_opts + [file_path])
+        try:
+            runner = pylint.lint.Run(pylint_opts + [file_path])
+        except Exception, err:
+            return "Unexpected exception checking %s: %s" % (file_path, err)
 
     return runner.linter.msg_status
 
@@ -124,7 +142,7 @@ if __name__ == "__main__":
     pylint_base_opts = get_pylint_opts()
     if '--' in file_list:
         index = file_list.index('--')
-        pylint_base_opts.extend(file_list[index+1:])
+        pylint_base_opts.extend(file_list[index + 1:])
         file_list = file_list[:index]
     if len(file_list) > 0:
         for path in file_list:

@@ -536,6 +536,15 @@
     <default>3</default>
   </runlevel>
   <scripts>
+  <chroot-scripts config:type="list">
+    <script>
+      <chrooted config:type="boolean">true</chrooted>
+      <source>
+        <![CDATA[sed -i 's/^#S0\(.*\)9600\(.*\)/S0\1115200\2/g' /etc/inittab
+echo ttyS0 >> /etc/securetty]]>
+      </source>
+    </script>
+  </chroot-scripts>
    <init-scripts config:type="list">
       <script>
         <debug config:type="boolean">true</debug>
@@ -552,6 +561,10 @@ service sshd restart
     <packages config:type="list">
       <package>dhcp-client</package>
       <package>open-iscsi</package>
+      <package>sg3_utils</package>
+      <package>lsscsi</package>
+      <package>libaio-devel</package>
+      <package>perl-Time-HiRes</package>
     </packages>
     <patterns config:type="list">
       <pattern>Basis-Devel</pattern>

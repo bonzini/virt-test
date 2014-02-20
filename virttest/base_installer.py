@@ -6,13 +6,22 @@ These classes can be, and usually are, inherited by subclasses that implement
 custom logic for each virtualization hypervisor/software.
 '''
 
-import os, logging
+import os
+import logging
 from autotest.client import utils, os_dep
 from autotest.client.shared import error
-import build_helper, utils_misc, utils_koji, yumrepo
+import build_helper
+import utils_misc
+import yumrepo
+import arch
+try:
+    from staging import utils_koji
+except ImportError:
+    from autotest.client.shared import utils_koji
 
 
 class NoModuleError(Exception):
+
     '''
     Error raised when no suitable modules were found to load
     '''
@@ -20,6 +29,7 @@ class NoModuleError(Exception):
 
 
 class VirtInstallException(Exception):
+
     '''
     Base virtualization software components installation exception
     '''
@@ -27,6 +37,7 @@ class VirtInstallException(Exception):
 
 
 class VirtInstallFailed(VirtInstallException):
+
     '''
     Installation of virtualization software components failed
     '''
@@ -34,6 +45,7 @@ class VirtInstallFailed(VirtInstallException):
 
 
 class VirtInstallNotInstalled(VirtInstallException):
+
     '''
     Virtualization software components are not installed
     '''
@@ -41,20 +53,22 @@ class VirtInstallNotInstalled(VirtInstallException):
 
 
 class BaseInstaller(object):
+
     '''
     Base virtualization software installer
 
     This class holds all the skeleton features for installers and should be
     inherited from when creating a new installer.
     '''
+
     def __init__(self, mode, name, test=None, params=None):
         '''
         Instantiates a new base installer
 
-        @param mode: installer mode, such as git_repo, local_src, etc
-        @param name: installer short name, foo for git_repo_foo
-        @param test: test
-        @param params: params
+        :param mode: installer mode, such as git_repo, local_src, etc
+        :param name: installer short name, foo for git_repo_foo
+        :param test: test
+        :param params: params
         '''
         self.mode = mode
         self.name = name
@@ -68,7 +82,6 @@ class BaseInstaller(object):
 
         if test and params:
             self.set_install_params(test, params)
-
 
     def _set_test_dirs(self, test):
         '''
@@ -103,7 +116,6 @@ class BaseInstaller(object):
         if not os.path.isdir(test.srcdir):
             os.makedirs(test.srcdir)
 
-
     def _set_param_load_module(self):
         '''
         Checks whether kernel modules should be loaded
@@ -119,7 +131,6 @@ class BaseInstaller(object):
         elif load_modules == 'no':
             self.should_load_modules = False
 
-
     def _set_param_module_list(self):
         '''
         Sets the list of kernel modules to be loaded during installation
@@ -127,8 +138,7 @@ class BaseInstaller(object):
         Configuration file parameter: module_list
         Class attribute set: module_list
         '''
-        self.module_list = self.params.get('module_list', '').split()
-
+        self.module_list = self.params.get('module_list', [])
 
     def _set_param_save_results(self):
         '''
@@ -141,7 +151,6 @@ class BaseInstaller(object):
         save_results = self.params.get('save_results', 'no')
         if save_results == 'no':
             self.save_results = False
-
 
     def _set_param_install_debug_info(self):
         '''
@@ -184,7 +193,6 @@ class BaseInstaller(object):
             self._set_param_install_debug_info()
             self._set_param_cleanup()
 
-
     def _install_phase_cleanup(self):
         '''
         Optional install phase for removing previous version of the software
@@ -196,7 +204,6 @@ class BaseInstaller(object):
         This replaces methods such as KojiInstaller._get_packages()
         '''
         pass
-
 
     def _install_phase_cleanup_verify(self):
         '''
@@ -210,7 +217,6 @@ class BaseInstaller(object):
         '''
         pass
 
-
     def _install_phase_download(self):
         '''
         Optional install phase for downloading software
@@ -223,7 +229,6 @@ class BaseInstaller(object):
         '''
         pass
 
-
     def _install_phase_download_verify(self):
         '''
         Optional install phase for checking downloaded software
@@ -233,11 +238,10 @@ class BaseInstaller(object):
 
         Ideas for using this method:
           * check MD5SUM/SHA1SUM for tarball downloads
-          * check RPM files, probaly by signature (rpm -k)
+          * check RPM files, probably by signature (rpm -k)
           * git status and check if there's no locally modified files
         '''
         pass
-
 
     def _install_phase_prepare(self):
         '''
@@ -249,7 +253,6 @@ class BaseInstaller(object):
         '''
         pass
 
-
     def _install_phase_prepare_verify(self):
         '''
         Optional install phase for checking software preparation
@@ -258,7 +261,6 @@ class BaseInstaller(object):
           * git status and check if there are locally patched files
         '''
         pass
-
 
     def _install_phase_build(self):
         '''
@@ -269,7 +271,6 @@ class BaseInstaller(object):
         '''
         pass
 
-
     def _install_phase_build_verify(self):
         '''
         Optional install phase for checking software build
@@ -278,7 +279,6 @@ class BaseInstaller(object):
            * running 'make test' or something similar to it
         '''
         pass
-
 
     def _install_phase_install(self):
         '''
@@ -289,7 +289,6 @@ class BaseInstaller(object):
            * running 'yum localinstall *.rpm'
         '''
         pass
-
 
     def _install_phase_install_verify(self):
         '''
@@ -302,7 +301,6 @@ class BaseInstaller(object):
         '''
         pass
 
-
     def _install_phase_init(self):
         '''
         Optional install phase for initializing the installed software
@@ -313,7 +311,6 @@ class BaseInstaller(object):
            * linking software (whether built or downloaded) to a common path
         '''
         pass
-
 
     def _install_phase_init_verify(self):
         '''
@@ -326,7 +323,6 @@ class BaseInstaller(object):
         '''
         pass
 
-
     def write_version_keyval(self, test):
         try:
             version = self.get_version()
@@ -336,7 +332,6 @@ class BaseInstaller(object):
         logging.debug("Writing test keyval %s", sw_version)
         test.write_test_keyval(sw_version)
 
-
     def load_modules(self, module_list=None):
         '''
         Load Linux Kernel modules the virtualization software may depend on
@@ -345,8 +340,8 @@ class BaseInstaller(object):
         loaded by the system stock modprobe tool, meaning that modules will be
         looked for in the system default module paths.
 
-        @type module_list: list
-        @param module_list: list of kernel modules names to load
+        :type module_list: list
+        :param module_list: list of kernel modules names to load
         '''
         if module_list is None:
             module_list = self.module_list
@@ -358,7 +353,6 @@ class BaseInstaller(object):
                      "modprobe")
         for module in module_list:
             utils.system("modprobe %s" % module)
-
 
     def unload_modules(self, module_list=None):
         '''
@@ -373,7 +367,6 @@ class BaseInstaller(object):
         for module in module_list:
             utils.unload_module(module)
 
-
     def reload_modules(self):
         """
         Reload the kernel modules (unload, then load)
@@ -381,11 +374,9 @@ class BaseInstaller(object):
         self.unload_modules()
         self.load_modules()
 
-
     def reload_modules_if_needed(self):
         if self.should_load_modules:
             self.reload_modules()
-
 
     def install(self, cleanup=True, download=True, prepare=True,
                 build=True, install=True, init=True):
@@ -425,7 +416,6 @@ class BaseInstaller(object):
             utils_misc.archive_as_tarball(self.test_srcdir,
                                           self.test_resultsdir)
 
-
     def uninstall(self):
         '''
         Performs the uninstallations of the virtualization software
@@ -436,23 +426,23 @@ class BaseInstaller(object):
 
 
 class NoopInstaller(BaseInstaller):
+
     '''
     Dummy installer that does nothing, useful when software is pre-installed
     '''
+
     def __init__(self, mode, name, test=None, params=None):
         '''
         If no previous install test ran, try to figure out modules to load.
 
-        @param mode (str): Install mode (yum, git, etc).
-        @param name (str): Installer name.
-        @param test: Virt test object.
-        @param params: Dict with test params.
+        :param mode (str): Install mode (yum, git, etc).
+        :param name (str): Installer name.
+        :param test: Virt test object.
+        :param params: Dict with test params.
         '''
         if params['vm_type'] == 'qemu':
-            params['module_list'] = ("kvm kvm-%s" %
-                                     utils_misc.get_cpu_vendor(verbose=False))
+            params['module_list'] = arch.get_kvm_module_list()
         super(NoopInstaller, self).__init__(mode, name, test, params)
-
 
     def install(self):
         logging.info("Assuming virtualization software to be already "
@@ -460,6 +450,7 @@ class NoopInstaller(BaseInstaller):
 
 
 class YumInstaller(BaseInstaller):
+
     '''
     Installs virtualization software using YUM
 
@@ -473,6 +464,7 @@ class YumInstaller(BaseInstaller):
     yum repos only. If the use case of installing from local RPM packages
     arises, we'll implement that.
     '''
+
     def set_install_params(self, test, params):
         super(YumInstaller, self).set_install_params(test, params)
         os_dep.command("rpm")
@@ -482,15 +474,12 @@ class YumInstaller(BaseInstaller):
         self.yum_pkgs = eval(params.get("%s_pkgs" % self.param_key_prefix,
                                         "[]"))
 
-
     def get_version(self):
         return " ".join(self.yum_pkgs)
-
 
     def _install_phase_cleanup(self):
         packages_to_remove = " ".join(self.yum_pkgs)
         utils.system("yum remove -y %s" % packages_to_remove)
-
 
     def _install_phase_install(self):
         if self.yum_pkgs:
@@ -503,6 +492,7 @@ class YumInstaller(BaseInstaller):
 
 
 class KojiInstaller(BaseInstaller):
+
     '''
     Handles virtualization software installation via koji/brew
 
@@ -512,6 +502,7 @@ class KojiInstaller(BaseInstaller):
     parameters this class uses are different (koji_tag, koji_pgks) and
     the install process runs YUM.
     '''
+
     def set_install_params(self, test, params):
         super(KojiInstaller, self).set_install_params(test, params)
         os_dep.command("rpm")
@@ -531,16 +522,14 @@ class KojiInstaller(BaseInstaller):
         if self.install_debug_info:
             self._expand_koji_pkgs_with_debuginfo()
 
-
     def get_version(self):
         return " ".join(self._get_rpm_file_names())
-
 
     def _expand_koji_pkgs_with_debuginfo(self):
         '''
         Include debuginfo RPMs on koji_pkgs
 
-        @returns: None
+        :return: None
         '''
         logging.debug("Koji package list to be updated with debuginfo pkgs")
 
@@ -564,7 +553,6 @@ class KojiInstaller(BaseInstaller):
         # swap current koji_pkgs with on that includes debuginfo pkgs
         self.koji_pkgs = koji_pkgs_with_debug
 
-
     def _get_rpm_names(self):
         all_rpm_names = []
         koji_client = utils_koji.KojiClient(cmd=self.koji_cmd)
@@ -581,7 +569,6 @@ class KojiInstaller(BaseInstaller):
                 all_rpm_names.append(r.get_nvr_info()['name'])
         return all_rpm_names
 
-
     def _get_rpm_file_names(self):
         all_rpm_file_names = []
         koji_client = utils_koji.KojiClient(cmd=self.koji_cmd)
@@ -596,11 +583,9 @@ class KojiInstaller(BaseInstaller):
             all_rpm_file_names += file_names
         return all_rpm_file_names
 
-
     def _install_phase_cleanup(self):
         removable_packages = " ".join(self._get_rpm_names())
         utils.system("yum -y remove %s" % removable_packages)
-
 
     def _install_phase_download(self):
         koji_client = utils_koji.KojiClient(cmd=self.koji_cmd)
@@ -614,7 +599,6 @@ class KojiInstaller(BaseInstaller):
         for pkg_text in self.koji_scratch_pkgs:
             pkg = utils_koji.KojiScratchPkgSpec(pkg_text)
             koji_client.get_scratch_pkgs(pkg, dst_dir=self.test_srcdir)
-
 
     def _install_phase_install(self):
         if self.koji_yumrepo_baseurl is not None:
@@ -635,6 +619,7 @@ class KojiInstaller(BaseInstaller):
 
 
 class BaseLocalSourceInstaller(BaseInstaller):
+
     def set_install_params(self, test, params):
         super(BaseLocalSourceInstaller, self).set_install_params(test, params)
         self._set_install_prefix()
@@ -654,7 +639,6 @@ class BaseLocalSourceInstaller(BaseInstaller):
         self.content_helper = None
         self.build_helper = None
 
-
     def _set_install_prefix(self):
         '''
         Prefix for installation of application built from source
@@ -666,14 +650,12 @@ class BaseLocalSourceInstaller(BaseInstaller):
         prefix = os.path.join(self.test_builddir, 'install_root')
         self.install_prefix = os.path.abspath(prefix)
 
-
     def _set_source_destination(self):
         '''
         Sets the source code destination directory path
         '''
         self.source_destination = os.path.join(self.test_srcdir,
                                                self.name)
-
 
     def _set_build_helper(self):
         '''
@@ -691,16 +673,13 @@ class BaseLocalSourceInstaller(BaseInstaller):
                 self.params, self.param_key_prefix,
                 self.source_destination)
 
-
     def _install_phase_prepare(self):
         if self.patch_helper is not None:
             self.patch_helper.execute()
 
-
     def _install_phase_download(self):
         if self.content_helper is not None:
             self.content_helper.execute()
-
 
     def _install_phase_build(self):
         if self.build_helper is not None:
@@ -721,16 +700,17 @@ class BaseLocalSourceInstaller(BaseInstaller):
             else:
                 self.build_helper.execute()
 
-
     def _install_phase_install(self):
         if self.build_helper is not None:
             self.build_helper.install()
 
 
 class LocalSourceDirInstaller(BaseLocalSourceInstaller):
+
     '''
     Handles software installation by building/installing from a source dir
     '''
+
     def set_install_params(self, test, params):
         super(LocalSourceDirInstaller, self).set_install_params(test, params)
 
@@ -743,9 +723,11 @@ class LocalSourceDirInstaller(BaseLocalSourceInstaller):
 
 
 class LocalSourceTarInstaller(BaseLocalSourceInstaller):
+
     '''
     Handles software installation by building/installing from a tarball
     '''
+
     def set_install_params(self, test, params):
         super(LocalSourceTarInstaller, self).set_install_params(test, params)
 
@@ -758,9 +740,11 @@ class LocalSourceTarInstaller(BaseLocalSourceInstaller):
 
 
 class RemoteSourceTarInstaller(BaseLocalSourceInstaller):
+
     '''
     Handles software installation by building/installing from a remote tarball
     '''
+
     def set_install_params(self, test, params):
         super(RemoteSourceTarInstaller, self).set_install_params(test, params)
 
@@ -773,6 +757,7 @@ class RemoteSourceTarInstaller(BaseLocalSourceInstaller):
 
 
 class GitRepoInstaller(BaseLocalSourceInstaller):
+
     def set_install_params(self, test, params):
         super(GitRepoInstaller, self).set_install_params(test, params)
 
@@ -783,7 +768,6 @@ class GitRepoInstaller(BaseLocalSourceInstaller):
 
         self._set_build_helper()
 
-
     def get_version(self):
         uri = self.content_helper.uri
         branch = self.content_helper.branch
@@ -792,14 +776,15 @@ class GitRepoInstaller(BaseLocalSourceInstaller):
 
 
 class FailedInstaller:
+
     """
     Class used to be returned instead of the installer if a installation fails
 
     Useful to make sure no installer object is used if virt installation fails
     """
+
     def __init__(self, msg="Virtualization software install failed"):
         self._msg = msg
-
 
     def load_modules(self):
         """

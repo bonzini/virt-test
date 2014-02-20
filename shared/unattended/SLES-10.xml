@@ -536,15 +536,26 @@
     <default>3</default>
   </runlevel>
   <scripts>
+  <chroot-scripts config:type="list">
+    <script>
+      <chrooted config:type="boolean">true</chrooted>
+      <source>
+        <![CDATA[sed -i 's/^#S0\(.*\)9600\(.*\)/S0\1115200\2/g' /etc/inittab
+echo ttyS0 >> /etc/securetty]]>
+      </source>
+    </script>
+  </chroot-scripts>
    <init-scripts config:type="list">
       <script>
         <debug config:type="boolean">true</debug>
         <filename>config</filename>
         <source><![CDATA[dhclient eth0
 chkconfig sshd on
+chkconfig NetworkManager on
 sed -i -e 's/\(PasswordAuthentication\s\)no/\1yes/g'  /etc/ssh/sshd_config
 service sshd restart
 service network restart
+service NetworkManager restart
 ]]></source>
       </script>
     </init-scripts>
@@ -552,6 +563,11 @@ service network restart
   <software>
     <packages config:type="list">
       <package>dhcp-client</package>
+      <package>sg3_utils</package>
+      <package>lsscsi</package>
+      <package>libaio-devel</package>
+      <package>perl-Time-HiRes</package>
+      <package>NetworkManager</package>
     </packages>
     <patterns config:type="list">
       <pattern>Basis-Devel</pattern>

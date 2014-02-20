@@ -549,6 +549,16 @@ service sshd restart
     </init-scripts>
   <chroot-scripts config:type="list">
     <script>
+      <chrooted config:type="boolean">false</chrooted>
+      <filename>serial_port_setting.sh</filename>
+      <debug config:type="boolean">true</debug>
+      <interpreter>shell</interpreter>
+      <source>
+        <![CDATA[sed -i 's/^#S0\(.*\)9600\(.*\)/S0\1115200\2/g' /mnt/etc/inittab
+echo ttyS0 >> /mnt/etc/securetty]]>
+      </source>
+    </script>
+    <script>
       <chrooted config:type="boolean">true</chrooted>
       <source>
         <![CDATA[cd /usr/share/YaST2/modules
@@ -581,6 +591,10 @@ ycpc -c Packages.ycp
     <packages config:type="list">
       <package>dhcp-client</package>
       <package>patch</package>
+      <package>sg3_utils</package>
+      <package>lsscsi</package>
+      <package>libaio-devel</package>
+      <package>perl-Time-HiRes</package>
     </packages>
     <patterns config:type="list">
       <pattern>Basis-Devel</pattern>

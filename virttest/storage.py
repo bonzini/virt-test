@@ -5,14 +5,20 @@ This exports:
   - two functions for get image/blkdebug filename
   - class for image operates and basic parameters
 """
-import logging, os, shutil, re
+import logging
+import os
+import shutil
+import re
 from autotest.client import utils
 try:
     from autotest.client.shared import iscsi
 except ImportError:
     from virttest import iscsi
 
-import utils_misc, virt_vm
+import utils_misc
+import virt_vm
+import gluster
+import lvm
 
 
 def preprocess_images(bindir, params, env):
@@ -27,6 +33,14 @@ def preprocess_images(bindir, params, env):
             image_obj.clone_image(params, vm_name, image, bindir)
 
 
+def preprocess_image_backend(bindir, params, env):
+    gluster_image = params.get("gluster_brick")
+    if gluster_image:
+        return gluster.create_gluster_vol(params)
+
+    return True
+
+
 def postprocess_images(bindir, params):
     for vm in params.get("vms").split():
         vm_params = params.object_params(vm)
@@ -35,16 +49,35 @@ def postprocess_images(bindir, params):
             image_obj.rm_cloned_image(params, vm, image, bindir)
 
 
+def file_exists(params, filename_path):
+    """
+    Check if image_filename exists.
+
+    :param params: Dictionary containing the test parameters.
+    :param filename_path: path to file
+    :type filename_path: str
+    :param root_dir: Base directory for relative filenames.
+    :type root_dir: str
+
+    :return: True if image file exists else False
+    """
+    gluster_image = params.get("gluster_brick")
+    if gluster_image:
+        return gluster.file_exists(params, filename_path)
+
+    return os.path.exists(filename_path)
+
+
 def get_image_blkdebug_filename(params, root_dir):
     """
     Generate an blkdebug file path from params and root_dir.
 
     blkdebug files allow error injection in the block subsystem.
 
-    @param params: Dictionary containing the test parameters.
-    @param root_dir: Base directory for relative filenames.
+    :param params: Dictionary containing the test parameters.
+    :param root_dir: Base directory for relative filenames.
 
-    @note: params should contain:
+    :note: params should contain:
            blkdebug -- the name of the debug file.
     """
     blkdebug_name = params.get("drive_blkdebug", None)
@@ -59,35 +92,58 @@ def get_image_filename(params, root_dir):
     """
     Generate an image path from params and root_dir.
 
-    @param params: Dictionary containing the test parameters.
-    @param root_dir: Base directory for relative filenames.
+    :param params: Dictionary containing the test parameters.
+    :param root_dir: Base directory for relative filenames.
+    :param image_name: Force name of image.
+    :param image_format: Format for image.
 
-    @note: params should contain:
+    :note: params should contain:
            image_name -- the name of the image file, without extension
            image_format -- the format of the image (qcow2, raw etc)
-    @raise VMDeviceError: When no matching disk found (in indirect method).
+    :raise VMDeviceError: When no matching disk found (in indirect method).
     """
-    def sort_cmp(x, y):
+    gluster_image = params.get("gluster_brick")
+    if gluster_image:
+        image_name = params.get("image_name", "image")
+        image_format = params.get("image_format", "qcow2")
+        return gluster.get_image_filename(params, image_name, image_format)
+
+    return get_image_filename_filesytem(params, root_dir)
+
+
+def get_image_filename_filesytem(params, root_dir):
+    """
+    Generate an image path from params and root_dir.
+
+    :param params: Dictionary containing the test parameters.
+    :param root_dir: Base directory for relative filenames.
+
+    :note: params should contain:
+           image_name -- the name of the image file, without extension
+           image_format -- the format of the image (qcow2, raw etc)
+    :raise VMDeviceError: When no matching disk found (in indirect method).
+    """
+    def sort_cmp(first, second):
         """
         This function used for sort to suit for this test, first sort by len
         then by value.
         """
-        has_digit_x = re.findall('[vhs]d[a-z]*[\d]+', x)
-        has_digit_y = re.findall('[vhs]d[a-z]*[\d]+', y)
+        first_contains_digit = re.findall(r'[vhs]d[a-z]*[\d]+', first)
+        second_contains_digit = re.findall(r'[vhs]d[a-z]*[\d]+', second)
 
-        if not has_digit_x and  not has_digit_y:
-            if len(x) > len(y):
+        if not first_contains_digit and not second_contains_digit:
+            if len(first) > len(second):
                 return 1
-            elif len(x) < len(y):
+            elif len(first) < len(second):
                 return -1
-        if len(x) == len(y):
-            if has_digit_x and has_digit_y:
-                return cmp(x, y)
-            elif has_digit_x:
+        if len(first) == len(second):
+            if first_contains_digit and second_contains_digit:
+                return cmp(first, second)
+            elif first_contains_digit:
                 return -1
-            elif has_digit_y:
+            elif second_contains_digit:
                 return 1
-        return cmp(x, y)
+        return cmp(first, second)
 
     image_name = params.get("image_name", "image")
     indirect_image_select = params.get("indirect_image_select")
@@ -95,7 +151,7 @@ def get_image_filename(params, root_dir):
         re_name = image_name
         indirect_image_select = int(indirect_image_select)
         matching_images = utils.system_output("ls -1d %s" % re_name)
-        matching_images = sorted(matching_images.split('\n'), cmp = sort_cmp)
+        matching_images = sorted(matching_images.split('\n'), cmp=sort_cmp)
         if matching_images[-1] == '':
             matching_images = matching_images[:-1]
         try:
@@ -109,15 +165,14 @@ def get_image_filename(params, root_dir):
         for protected in params.get('indirect_image_blacklist', '').split(' '):
             match_image = re.match(protected, image_name)
             if match_image and match_image.group(0) == image_name:
-                """
-                We just need raise an error if it is totally match, such as
-                sda sda1 and so on, but sdaa should not raise an error.
-                """
+                # We just need raise an error if it is totally match, such as
+                # sda sda1 and so on, but sdaa should not raise an error.
                 raise virt_vm.VMDeviceError("Matching disk is in blacklist. "
                                             "name = '%s', matching = '%s' and "
                                             "selector = '%s'" %
                                             (re_name, matching_images,
                                              indirect_image_select))
+
     image_format = params.get("image_format", "qcow2")
     if params.get("image_raw_device") == "yes":
         return image_name
@@ -125,33 +180,37 @@ def get_image_filename(params, root_dir):
         image_filename = "%s.%s" % (image_name, image_format)
     else:
         image_filename = image_name
+
     image_filename = utils_misc.get_path(root_dir, image_filename)
     return image_filename
 
 
 class OptionMissing(Exception):
+
     """
     Option not found in the odbject
     """
+
     def __init__(self, option):
         self.option = option
-
 
     def __str__(self):
         return "%s is missing. Please check your parameters" % self.option
 
 
 class QemuImg(object):
+
     """
     A basic class for handling operations of disk/block images.
     """
+
     def __init__(self, params, root_dir, tag):
         """
         Init the default value for image object.
 
-        @param params: Dictionary containing the test parameters.
-        @param root_dir: Base directory for relative filenames.
-        @param tag: Image tag defined in parameter images.
+        :param params: Dictionary containing the test parameters.
+        :param root_dir: Base directory for relative filenames.
+        :param tag: Image tag defined in parameter images.
         """
         self.image_filename = get_image_filename(params, root_dir)
         self.image_format = params.get("image_format", "qcow2")
@@ -160,10 +219,11 @@ class QemuImg(object):
         self.image_blkdebug_filename = get_image_blkdebug_filename(params,
                                                                    root_dir)
         image_chain = params.get("image_chain")
+        self.root_dir = root_dir
         self.base_tag = None
         self.snapshot_tag = None
         if image_chain:
-            image_chain = re.split("\s+", image_chain)
+            image_chain = re.split(r"\s+", image_chain)
             if tag in image_chain:
                 index = image_chain.index(tag)
                 if index < len(image_chain) - 1:
@@ -173,36 +233,35 @@ class QemuImg(object):
         if self.base_tag:
             base_params = params.object_params(self.base_tag)
             self.base_image_filename = get_image_filename(base_params,
-                                                           root_dir)
+                                                          root_dir)
             self.base_format = base_params.get("image_format")
         if self.snapshot_tag:
             ss_params = params.object_params(self.snapshot_tag)
             self.snapshot_image_filename = get_image_filename(ss_params,
-                                                               root_dir)
+                                                              root_dir)
             self.snapshot_format = ss_params.get("image_format")
-
 
     def check_option(self, option):
         """
         Check if object has the option required.
 
-        @param option: option should be checked
+        :param option: option should be checked
         """
         if option not in self.__dict__:
             raise OptionMissing(option)
 
-
-    def backup_image(self, params, root_dir, action, good=True):
+    def backup_image(self, params, root_dir, action, good=True,
+                     skip_existing=False):
         """
         Backup or restore a disk image, depending on the action chosen.
 
-        @param params: Dictionary containing the test parameters.
-        @param root_dir: Base directory for relative filenames.
-        @param action: Whether we want to backup or restore the image.
-        @param good: If we are backing up a good image(we want to restore it)
+        :param params: Dictionary containing the test parameters.
+        :param root_dir: Base directory for relative filenames.
+        :param action: Whether we want to backup or restore the image.
+        :param good: If we are backing up a good image(we want to restore it)
             or a bad image (we are saving a bad image for posterior analysis).
 
-        @note: params should contain:
+        :note: params should contain:
                image_name -- the name of the image file, without extension
                image_format -- the format of the image (qcow2, raw etc)
         """
@@ -214,6 +273,8 @@ class QemuImg(object):
 
         def backup_image_file(src, dst):
             logging.debug("Copying %s -> %s", src, dst)
+            if os.path.isfile(dst) and os.path.isfile(src):
+                os.unlink(dst)
             if os.path.isfile(src):
                 shutil.copy(src, dst)
             else:
@@ -255,9 +316,10 @@ class QemuImg(object):
 
             return bkp_set
 
-
         image_filename = self.image_filename
-        backup_dir = params.get("backup_dir")
+        backup_dir = params.get("backup_dir", "")
+        if not os.path.isabs(backup_dir):
+            backup_dir = os.path.join(root_dir, backup_dir)
         if params.get('image_raw_device') == 'yes':
             iname = "raw_device"
             iformat = params.get("image_format", "qcow2")
@@ -266,7 +328,8 @@ class QemuImg(object):
             backup_set = get_backup_set(ifilename, backup_dir, action, good)
             backup_func = backup_raw_device
         else:
-            backup_set = get_backup_set(image_filename, backup_dir, action, good)
+            backup_set = get_backup_set(image_filename, backup_dir, action,
+                                        good)
             backup_func = backup_image_file
 
         if action == 'backup':
@@ -280,9 +343,9 @@ class QemuImg(object):
 
             minimum_disk_free = 1.2 * backup_size
             if image_dir_disk_free < minimum_disk_free:
-                image_dir_disk_free_gb = float(image_dir_disk_free) / 10**9
-                backup_size_gb = float(backup_size) / 10**9
-                minimum_disk_free_gb = float(minimum_disk_free) / 10**9
+                image_dir_disk_free_gb = float(image_dir_disk_free) / 10 ** 9
+                backup_size_gb = float(backup_size) / 10 ** 9
+                minimum_disk_free_gb = float(minimum_disk_free) / 10 ** 9
                 logging.error("Free space on %s: %.1f GB", image_dir,
                               image_dir_disk_free_gb)
                 logging.error("Backup size: %.1f GB", backup_size_gb)
@@ -293,17 +356,19 @@ class QemuImg(object):
                 return
 
         for src, dst in backup_set:
+            if action == 'backup' and skip_existing and os.path.exists(dst):
+                continue
             backup_func(src, dst)
 
-
-    def clone_image(self, params, vm_name, image_name, root_dir):
+    @staticmethod
+    def clone_image(params, vm_name, image_name, root_dir):
         """
         Clone master image to vm specific file.
 
-        @param params: Dictionary containing the test parameters.
-        @param vm_name: Vm name.
-        @param image_name: Master image name.
-        @param root_dir: Base directory for relative filenames.
+        :param params: Dictionary containing the test parameters.
+        :param vm_name: Vm name.
+        :param image_name: Master image name.
+        :param root_dir: Base directory for relative filenames.
         """
         if not params.get("image_name_%s_%s" % (image_name, vm_name)):
             m_image_name = params.get("image_name", "image")
@@ -318,20 +383,20 @@ class QemuImg(object):
                 force_clone = params.get("force_image_clone", "no")
                 if not os.path.exists(image_fn) or force_clone == "yes":
                     logging.info("Clone master image for vms.")
-                    utils.run(params.get("image_clone_commnad") % (m_image_fn,
+                    utils.run(params.get("image_clone_command") % (m_image_fn,
                                                                    image_fn))
 
             params["image_name_%s_%s" % (image_name, vm_name)] = vm_image_name
 
-
-    def rm_cloned_image(self, params, vm_name, image_name, root_dir):
+    @staticmethod
+    def rm_cloned_image(params, vm_name, image_name, root_dir):
         """
         Remove vm specific file.
 
-        @param params: Dictionary containing the test parameters.
-        @param vm_name: Vm name.
-        @param image_name: Master image name.
-        @param root_dir: Base directory for relative filenames.
+        :param params: Dictionary containing the test parameters.
+        :param vm_name: Vm name.
+        :param image_name: Master image name.
+        :param root_dir: Base directory for relative filenames.
         """
         if params.get("image_name_%s_%s" % (image_name, vm_name)):
             m_image_name = params.get("image_name", "image")
@@ -344,22 +409,24 @@ class QemuImg(object):
 
                 logging.debug("Removing vm specific image file %s", image_fn)
                 if os.path.exists(image_fn):
-                    utils.run(params.get("image_remove_commnad") % (image_fn))
+                    utils.run(params.get("image_remove_command") % (image_fn))
                 else:
                     logging.debug("Image file %s not found", image_fn)
 
 
 class Rawdev(object):
+
     """
-    Base class for rew storage devices such as iscsi and local disks
+    Base class for raw storage devices such as iscsi and local disks
     """
+
     def __init__(self, params, root_dir, tag):
         """
         Init the default value for image object.
 
-        @param params: Dictionary containing the test parameters.
-        @param root_dir: Base directory for relative filenames.
-        @param tag: Image tag defined in parameter images
+        :param params: Dictionary containing the test parameters.
+        :param root_dir: Base directory for relative filenames.
+        :param tag: Image tag defined in parameter images
         """
         host_set_flag = params.get("host_setup_flag")
         if host_set_flag is not None:
@@ -372,16 +439,18 @@ class Rawdev(object):
 
 
 class Iscsidev(Rawdev):
+
     """
     Class for handle iscsi devices for VM
     """
+
     def __init__(self, params, root_dir, tag):
         """
         Init the default value for image object.
 
-        @param params: Dictionary containing the test parameters.
-        @param root_dir: Base directory for relative filenames.
-        @param tag: Image tag defined in parameter images
+        :param params: Dictionary containing the test parameters.
+        :param root_dir: Base directory for relative filenames.
+        :param tag: Image tag defined in parameter images
         """
         Rawdev.__init__(self, params, root_dir, tag)
         self.emulated_file_remove = False
@@ -392,3 +461,24 @@ class Iscsidev(Rawdev):
         params["iscsi_thread_id"] = self.image_name
         self.iscsidevice = iscsi.Iscsi(params, root_dir=root_dir)
         self.device_id = params.get("device_id")
+
+
+class LVMdev(Rawdev):
+
+    """
+    Class for handle LVM devices for VM
+    """
+
+    def __init__(self, params, root_dir, tag):
+        """
+        Init the default value for image object.
+
+        @param params: Dictionary containing the test parameters.
+        @param root_dir: Base directory for relative filenames.
+        @param tag: Image tag defined in parameter images
+        """
+        super(LVMdev, self).__init__(params, root_dir, tag)
+        if params.get("emulational_device", "yes") == "yes":
+            self.lvmdevice = lvm.EmulatedLVM(params, root_dir=root_dir)
+        else:
+            self.lvmdevice = lvm.LVM(params)

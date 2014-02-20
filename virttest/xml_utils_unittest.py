@@ -1,9 +1,14 @@
 #!/usr/bin/python
 
-import unittest, tempfile, os, glob, logging
+import unittest
+import tempfile
+import os
+import glob
+import logging
+
 import common
 import xml_utils
-from virttest import ElementTree
+from virttest import element_tree as ElementTree
 
 
 class xml_test_data(unittest.TestCase):
@@ -14,15 +19,9 @@ class xml_test_data(unittest.TestCase):
 
     def setUp(self):
         xml_utils.TMPPFX = 'xml_utils_unittest_temp_'
-        # Previous testing may have failed / left behind extra files
-        for filename in self.get_tmp_files(xml_utils.TMPPFX, xml_utils.TMPSFX):
-            os.unlink(filename)
-        for filename in self.get_tmp_files(xml_utils.TMPPFX,
-                                           xml_utils.TMPSFX + xml_utils.EXSFX):
-            os.unlink(filename)
         # Compacted to save excess scrolling
-        self.TEXT_REPLACE_KEY="TEST_XML_TEXT_REPLACE"
-        self.XMLSTR="""<?xml version='1.0' encoding='UTF-8'?><capabilities><host>
+        self.TEXT_REPLACE_KEY = "TEST_XML_TEXT_REPLACE"
+        self.XMLSTR = """<?xml version='1.0' encoding='UTF-8'?><capabilities><host>
         <uuid>4d515db1-9adc-477d-8195-f817681e72e6</uuid><cpu><arch>x86_64</arch>
         <model>Westmere</model><vendor>Intel</vendor><topology sockets='1'
         cores='2' threads='2'/><feature name='rdtscp'/><feature name='x2apic'/>
@@ -50,13 +49,11 @@ class xml_test_data(unittest.TestCase):
         os.close(fd)
         self.canonicalize_test_xml()
 
-
     def tearDown(self):
         os.unlink(self.XMLFILE)
         leftovers = self.get_tmp_files(xml_utils.TMPPFX, xml_utils.TMPSFX)
         if len(leftovers) > 0:
             self.fail('Leftover files: %s' % str(leftovers))
-
 
     def canonicalize_test_xml(self):
         et = ElementTree.parse(self.XMLFILE)
@@ -64,7 +61,6 @@ class xml_test_data(unittest.TestCase):
         f = file(self.XMLFILE)
         self.XMLSTR = f.read()
         f.close()
-
 
     def is_same_contents(self, filename, other=None):
         """Compare filename contents with XMLSTR, or contents of other"""
@@ -95,7 +91,6 @@ class test_TempXMLFile(xml_test_data):
         self.assert_(filename.startswith(xml_utils.TMPPFX))
         self.assert_(filename.endswith(xml_utils.TMPSFX))
 
-
     def test_test_TempXMLFile_canread(self):
         tmpf = xml_utils.TempXMLFile()
         tmpf.write(self.XMLSTR)
@@ -103,13 +98,11 @@ class test_TempXMLFile(xml_test_data):
         stuff = tmpf.read()
         self.assertEqual(stuff, self.XMLSTR)
 
-
     def test_TempXMLFile_implicit(self):
         def out_of_scope_tempxmlfile():
             tmpf = xml_utils.TempXMLFile()
             return tmpf.name
         self.assertRaises(OSError, os.stat, out_of_scope_tempxmlfile())
-
 
     def test_TempXMLFile_explicit(self):
         tmpf = xml_utils.TempXMLFile()
@@ -128,11 +121,9 @@ class test_XMLBackup(xml_test_data):
         xmlbackup = self.class_to_test(self.XMLFILE)
         self.assertEqual(xmlbackup.sourcefilename, self.XMLFILE)
 
-
     def test_backup_file(self):
         xmlbackup = self.class_to_test(self.XMLFILE)
         self.assertTrue(self.is_same_contents(xmlbackup.name))
-
 
     def test_rebackup_file(self):
         xmlbackup = self.class_to_test(self.XMLFILE)
@@ -143,14 +134,12 @@ class test_XMLBackup(xml_test_data):
         xmlbackup.backup()
         self.assertTrue(self.is_same_contents(xmlbackup.name))
 
-
     def test_restore_file(self):
         xmlbackup = self.class_to_test(self.XMLFILE)
         # nuke source
         os.unlink(xmlbackup.sourcefilename)
         xmlbackup.restore()
         self.assertTrue(self.is_same_contents(xmlbackup.name))
-
 
     def test_remove_backup_file(self):
         xmlbackup = self.class_to_test(self.XMLFILE)
@@ -159,14 +148,12 @@ class test_XMLBackup(xml_test_data):
         del xmlbackup
         self.assertRaises(OSError, os.unlink, filename)
 
-
     def test_TempXMLBackup_implicit(self):
         def out_of_scope_xmlbackup():
             tmpf = self.class_to_test(self.XMLFILE)
             return tmpf.name
         filename = out_of_scope_xmlbackup()
         self.assertRaises(OSError, os.unlink, filename)
-
 
     def test_TempXMLBackup_exception_exit(self):
         tmpf = self.class_to_test(self.XMLFILE)
@@ -176,7 +163,6 @@ class test_XMLBackup(xml_test_data):
         self.assertTrue(self.is_same_contents(filename + xml_utils.EXSFX))
         os.unlink(filename + xml_utils.EXSFX)
 
-
     def test_TempXMLBackup_unexception_exit(self):
         tmpf = self.class_to_test(self.XMLFILE)
         filename = tmpf.name
@@ -185,7 +171,7 @@ class test_XMLBackup(xml_test_data):
         self.assertRaises(OSError, os.unlink, filename)
 
 
-class test_XMLTreeFile(test_XMLBackup):
+class test_XMLTreeFile(xml_test_data):
 
     class_to_test = xml_utils.XMLTreeFile
 
@@ -199,11 +185,9 @@ class test_XMLTreeFile(test_XMLBackup):
         xml = self.class_to_test(self.XMLFILE)
         self.assertRaises(ValueError, xml.sourcebackupfile.write, 'foobar')
 
-
     def test_sourcebackupfile_closed_string(self):
         xml = self.class_to_test(self.XMLSTR)
         self.assertRaises(ValueError, xml.sourcebackupfile.write, 'foobar')
-
 
     def test_init_str(self):
         xml = self.class_to_test(self.XMLSTR)
@@ -211,27 +195,23 @@ class test_XMLTreeFile(test_XMLBackup):
         self.assertEqual(xml.sourcebackupfile.name,
                          xml.sourcefilename)
 
-
     def test_init_xml(self):
         xml = self.class_to_test(self.XMLFILE)
         self.assert_(xml.sourcefilename is not None)
         self.assertEqual(xml.sourcebackupfile.name,
                          xml.sourcefilename)
 
-
     def test_restore_from_string(self):
         xmlbackup = self.class_to_test(self.XMLSTR)
         os.unlink(xmlbackup.sourcefilename)
-        xmlbackup.restore()
+        xmlbackup.backup()
         self.assertTrue(self.is_same_contents(xmlbackup.sourcefilename))
-
 
     def test_restore_from_file(self):
         xmlbackup = self.class_to_test(self.XMLFILE)
         os.unlink(xmlbackup.sourcefilename)
-        xmlbackup.restore()
+        xmlbackup.backup()
         self.assertTrue(self.is_same_contents(xmlbackup.name))
-
 
     def test_backup_backup_and_remove(self):
         tmpf = self.class_to_test(self.XMLFILE)
@@ -249,7 +229,6 @@ class test_XMLTreeFile(test_XMLBackup):
         self.assertTrue(self.is_same_contents(bu_tmpf.name, bu_tmps.name))
         self.assertFalse(self.is_same_contents(tmpf.name, tmps.name))
 
-
     def test_write_default(self):
         xmlbackup = self.class_to_test(self.XMLFILE)
         wordsize = xmlbackup.find('guest/arch/wordsize')
@@ -259,14 +238,12 @@ class test_XMLTreeFile(test_XMLBackup):
         xmlbackup.write()
         self.assertFalse(self.is_same_contents(xmlbackup.name))
 
-
     def test_write_other(self):
         xmlbackup = self.class_to_test(self.XMLFILE)
         otherfile = xml_utils.TempXMLFile()
         xmlbackup.write(otherfile)
         otherfile.close()
         self.assertTrue(self.is_same_contents(otherfile.name))
-
 
     def test_write_other_changed(self):
         xmlbackup = self.class_to_test(self.XMLSTR)
@@ -280,7 +257,6 @@ class test_XMLTreeFile(test_XMLBackup):
         self.canonicalize_test_xml()
         self.assertTrue(self.is_same_contents(otherfile.name))
 
-
     def test_read_other_changed(self):
         xmlbackup = self.class_to_test(self.XMLSTR)
         wordsize = xmlbackup.find('guest/arch/wordsize')
@@ -288,7 +264,7 @@ class test_XMLTreeFile(test_XMLBackup):
         otherfile = xml_utils.TempXMLFile()
         xmlbackup.write(otherfile)
         otherfile.close()
-        xmlbackup.backup()
+        xmlbackup.restore()
         self.assertTrue(self.is_same_contents(xmlbackup.name))
         xmlbackup.read(otherfile.name)
         self.assertFalse(self.is_same_contents(otherfile.name))
@@ -297,14 +273,12 @@ class test_XMLTreeFile(test_XMLBackup):
         self.canonicalize_test_xml()
         self.assertTrue(self.is_same_contents(otherfile.name))
 
-
     def get_xpath_elements(self, target_path_string):
         xmlbackup = self.class_to_test(self.XMLSTR)
         target_element = xmlbackup.find(target_path_string)
         test_path_string = xmlbackup.get_xpath(target_element)
         test_element = xmlbackup.find(test_path_string)
         return (target_element, test_element)
-
 
     def test_get_xpath(self):
         # 2.6 ElementPath doesn't support predicates as in 2.7 :(
@@ -313,20 +287,32 @@ class test_XMLTreeFile(test_XMLBackup):
         self.assertEqual(*self.get_xpath_elements('guest/arch/machine'))
         self.assertEqual(*self.get_xpath_elements('host/cpu/arch'))
 
+    def test_create_by_xpath(self):
+        testxml = self.class_to_test(self.XMLSTR)
+        self.assertTrue(testxml.find('host/cpu') is not None)
+        self.assertFalse(testxml.find('host/cpu/foo') is not None)
+        testxml.create_by_xpath('host/cpu/foo/bar')
+        self.assertTrue(testxml.find('host/cpu/foo/bar') is not None)
+        self.assertFalse(testxml.find('host/cpu/foo/baz') is not None)
+        testxml.create_by_xpath('host/cpu/foo/bar/baz')
+        self.assertTrue(testxml.find('host/cpu/foo/bar/baz') is not None)
+        # something totally new
+        self.assertFalse(testxml.find('foo/bar/baz') is not None)
+        testxml.create_by_xpath('foo/bar/baz')
+        self.assertTrue(testxml.find('foo/bar/baz') is not None)
+
 
 class test_templatized_xml(xml_test_data):
 
     def setUp(self):
-        self.MAPPING = {"foo":"bar", "bar":"baz", "baz":"foo"}
+        self.MAPPING = {"foo": "bar", "bar": "baz", "baz": "foo"}
         self.FULLREPLACE = """<$foo $bar="$baz">${baz}${foo}${bar}</$foo>"""
         self.RESULTCHECK = """<bar baz="foo">foobarbaz</bar>"""
         super(test_templatized_xml, self).setUp()
 
-
     def test_sub(self):
         sub = xml_utils.Sub(**self.MAPPING)
         self.assertEqual(sub.substitute(self.FULLREPLACE), self.RESULTCHECK)
-
 
     def test_MappingTreeBuilder_standalone(self):
         txtb = xml_utils.TemplateXMLTreeBuilder(**self.MAPPING)
@@ -334,7 +320,6 @@ class test_templatized_xml(xml_test_data):
         et = txtb.close()
         result = ElementTree.tostring(et)
         self.assertEqual(result, self.RESULTCHECK)
-
 
     def test_TemplateXMLTreeBuilder_nosub(self):
         txtb = xml_utils.TemplateXMLTreeBuilder()
@@ -344,16 +329,14 @@ class test_templatized_xml(xml_test_data):
         result = ElementTree.tostring(et)
         self.assertEqual(result, self.RESULTCHECK)
 
-
     def test_TemplateXML(self):
         tx = xml_utils.TemplateXML(self.FULLREPLACE, **self.MAPPING)
         et = ElementTree.ElementTree(None, tx.name)
         check = ElementTree.tostring(et.getroot())
         self.assertEqual(check, self.RESULTCHECK)
 
-
     def test_restore_fails(self):
-        testmapping = {self.TEXT_REPLACE_KEY:"foobar"}
+        testmapping = {self.TEXT_REPLACE_KEY: "foobar"}
         xmlbackup = xml_utils.TemplateXML(self.XMLFILE, **testmapping)
         # Unless the backup was initialized from a string (into a temp file)
         # assume the source is read-only and should be protected.

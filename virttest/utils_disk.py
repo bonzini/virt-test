@@ -1,10 +1,15 @@
 """
 Virtualization test - Virtual disk related utility functions
 
-@copyright: Red Hat Inc.
+:copyright: Red Hat Inc.
 """
-
-import os, glob, shutil, tempfile, logging, ConfigParser
+import os
+import glob
+import shutil
+import tempfile
+import logging
+import ConfigParser
+import re
 from autotest.client import utils
 from autotest.client.shared import error
 
@@ -19,7 +24,7 @@ def cleanup(folder):
     If folder is a mountpoint, do what is possible to unmount it. Afterwards,
     try to remove it.
 
-    @param folder: Directory to be cleaned up.
+    :param folder: Directory to be cleaned up.
     """
     error.context("cleaning up unattended install directory %s" % folder)
     if os.path.ismount(folder):
@@ -35,7 +40,7 @@ def clean_old_image(image):
     Clean a leftover image file from previous processes. If it contains a
     mounted file system, do the proper cleanup procedures.
 
-    @param image: Path to image to be cleaned up.
+    :param image: Path to image to be cleaned up.
     """
     error.context("cleaning up old leftover image %s" % image)
     if os.path.exists(image):
@@ -49,16 +54,16 @@ def clean_old_image(image):
 
 
 class Disk(object):
+
     """
     Abstract class for Disk objects, with the common methods implemented.
     """
+
     def __init__(self):
         self.path = None
 
-
     def get_answer_file_path(self, filename):
         return os.path.join(self.mount, filename)
-
 
     def copy_to(self, src):
         logging.debug("Copying %s to disk image mount", src)
@@ -68,14 +73,14 @@ class Disk(object):
         elif os.path.isfile(src):
             shutil.copyfile(src, dst)
 
-
     def close(self):
         os.chmod(self.path, 0755)
         cleanup(self.mount)
-        logging.debug("Disk %s successfuly set", self.path)
+        logging.debug("Disk %s successfully set", self.path)
 
 
 class FloppyDisk(Disk):
+
     """
     Represents a floppy disk. We can copy files to it, and setup it in
     convenient ways.
@@ -98,7 +103,6 @@ class FloppyDisk(Disk):
             cleanup(self.mount)
             raise
 
-
     def close(self):
         """
         Copy everything that is in the mountpoint to the floppy.
@@ -114,12 +118,10 @@ class FloppyDisk(Disk):
 
         cleanup(self.mount)
 
-
     def copy_to(self, src):
         logging.debug("Copying %s to floppy image", src)
         mcopy_cmd = "mcopy -s -o -n -i %s %s ::/" % (self.path, src)
         utils.run(mcopy_cmd, verbose=DEBUG)
-
 
     def _copy_virtio_drivers(self, virtio_floppy):
         """
@@ -130,11 +132,11 @@ class FloppyDisk(Disk):
         """
         pwd = os.getcwd()
         try:
-            m_cmd = 'mcopy -s -o -n -i %s ::/* %s' % (virtio_floppy, self.mount)
+            m_cmd = 'mcopy -s -o -n -i %s ::/* %s' % (
+                virtio_floppy, self.mount)
             utils.run(m_cmd, verbose=DEBUG)
         finally:
             os.chdir(pwd)
-
 
     def setup_virtio_win2003(self, virtio_floppy, virtio_oemsetup_id):
         """
@@ -172,7 +174,6 @@ class FloppyDisk(Disk):
             parser.write(fp)
             fp.close()
 
-
     def setup_virtio_win2008(self, virtio_floppy):
         """
         Setup the install floppy with the virtio storage drivers, win2008 style.
@@ -189,20 +190,22 @@ class FloppyDisk(Disk):
         if os.path.isfile(virtio_floppy):
             self._copy_virtio_drivers(virtio_floppy)
         else:
-            logging.debug("No virtio floppy present, not needed for this OS anyway")
+            logging.debug(
+                "No virtio floppy present, not needed for this OS anyway")
 
 
 class CdromDisk(Disk):
+
     """
     Represents a CDROM disk that we can master according to our needs.
     """
+
     def __init__(self, path, tmpdir):
         self.mount = tempfile.mkdtemp(prefix='cdrom_virttest_', dir=tmpdir)
         self.path = path
         clean_old_image(path)
         if not os.path.isdir(os.path.dirname(path)):
             os.makedirs(os.path.dirname(path))
-
 
     @error.context_aware
     def close(self):
@@ -214,14 +217,16 @@ class CdromDisk(Disk):
 
         os.chmod(self.path, 0755)
         cleanup(self.mount)
-        logging.debug("unattended install CD image %s successfuly created",
+        logging.debug("unattended install CD image %s successfully created",
                       self.path)
 
 
 class CdromInstallDisk(Disk):
+
     """
     Represents a install CDROM disk that we can master according to our needs.
     """
+
     def __init__(self, path, tmpdir, source_cdrom, extra_params):
         self.mount = tempfile.mkdtemp(prefix='cdrom_unattended_', dir=tmpdir)
         self.path = path
@@ -239,10 +244,8 @@ class CdromInstallDisk(Disk):
                        os.path.join(self.mount, i))
         utils.run(cp_cmd)
 
-
     def get_answer_file_path(self, filename):
         return os.path.join(self.mount, 'isolinux', filename)
-
 
     @error.context_aware
     def close(self):
@@ -260,3 +263,137 @@ class CdromInstallDisk(Disk):
         cleanup(self.source_cdrom)
         logging.debug("unattended install CD image %s successfully created",
                       self.path)
+
+
+class GuestFSModiDisk(object):
+
+    """
+    class of guest disk using guestfs lib to do some operation(like read/write)
+    on guest disk:
+    """
+
+    def __init__(self, disk):
+        try:
+            import guestfs
+        except ImportError:
+            install_cmd = "yum -y install python-libguestfs"
+            try:
+                utils.run(install_cmd)
+                import guestfs
+            except Exception:
+                raise error.TestNAError('We need python-libguestfs (or the '
+                                        'equivalent for your distro) for this '
+                                        'particular feature (modifying guest '
+                                        'files with libguestfs)')
+
+        self.g = guestfs.GuestFS()
+        self.disk = disk
+        self.g.add_drive(disk)
+        logging.debug("Launch the disk %s, wait..." % self.disk)
+        self.g.launch()
+
+    def os_inspects(self):
+        self.roots = self.g.inspect_os()
+        if self.roots:
+            return self.roots
+        else:
+            return None
+
+    def mounts(self):
+        return self.g.mounts()
+
+    def mount_all(self):
+        def compare(a, b):
+            if len(a[0]) > len(b[0]):
+                return 1
+            elif len(a[0]) == len(b[0]):
+                return 0
+            else:
+                return -1
+
+        roots = self.os_inspects()
+        if roots:
+            for root in roots:
+                mps = self.g.inspect_get_mountpoints(root)
+                mps.sort(compare)
+                for mp_dev in mps:
+                    try:
+                        msg = "Mount dev '%s' partitions '%s' to '%s'"
+                        logging.info(msg % (root, mp_dev[1], mp_dev[0]))
+                        self.g.mount(mp_dev[1], mp_dev[0])
+                    except RuntimeError, err_msg:
+                        logging.info("%s (ignored)" % err_msg)
+        else:
+            raise error.TestError("inspect_vm: no operating systems found")
+
+    def umount_all(self):
+        logging.debug("Umount all device partitions")
+        if self.mounts():
+            self.g.umount_all()
+
+    def read_file(self, file_name):
+        """
+        read file from the guest disk, return the content of the file
+
+        @Param file_name: the file you want to read.
+        """
+
+        try:
+            self.mount_all()
+            o = self.g.cat(file_name)
+            if o:
+                return o
+            else:
+                err_msg = "Can't read file '%s', check is it exist?"
+                raise error.TestError(err_msg % file_name)
+        finally:
+            self.umount_all()
+
+    def write_to_image_file(self, file_name, content, w_append=False):
+        """
+        wirte content to the file on the guest disk.
+        when using this method all the original content will be overriding.
+        if you don't hope your original data be override make:
+        'w_append=True'
+
+        @Param  file_name: the file you want to write
+        @Param  content: the content you want to write.
+        @Param  w_append append the content or override
+        """
+
+        try:
+            try:
+                self.mount_all()
+                if w_append:
+                    self.g.write_append(file_name, content)
+                else:
+                    self.g.write(file_name, content)
+            except Exception:
+                raise error.TestError("write '%s' to file '%s' error!"
+                                      % (content, file_name))
+        finally:
+            self.umount_all()
+
+    def replace_image_file_content(self, file_name, find_con, rep_con):
+        """
+        replace file content matchs in the file with rep_con.
+        suport using Regular expression
+
+        @Param  file_name: the file you want to replace
+        @Param  find_con: the orign content you want to replace.
+        @Param  rep_con: the replace content you want.
+        """
+
+        try:
+            self.mount_all()
+            file_content = self.g.cat(file_name)
+            if file_content:
+                file_content_after_replace = re.sub(find_con, rep_con,
+                                                    file_content)
+                if file_content != file_content_after_replace:
+                    self.g.write(file_name, file_content_after_replace)
+            else:
+                err_msg = "Can't read file '%s', check is it exist?"
+                raise error.TestError(err_msg % file_name)
+        finally:
+            self.umount_all()
